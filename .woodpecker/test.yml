@@ -1,0 +1,42 @@
+labels:
+  runner: k8s
+
+when:
+  - event: push
+    branch: main
+  - event: pull_request
+  - event: tag
+
+steps:
+  contract:
+    image: golang:1.25
+    backend_options:
+      kubernetes:
+        resources:
+          requests: { memory: 512Mi, cpu: 250m }
+          limits: { memory: 2Gi }
+    commands:
+      - test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - go vet ./...
+      # * The whole suite. These tests are the contract: TestNoNonStdlibImports
+      # * keeps the module importable at all, and the rest pin the wire shape
+      # * that both the server and the CLI decode.
+      # *
+      # * Worth stating because it was not true before: while these types lived
+      # * in pulse-backend's pkg/publicv1 they ran under `make test` but NOT in
+      # * CI, whose unit step is scoped to ./internal/... — so nothing under
+      # * pkg/ was ever part of a PR check.
+      - go test -v ./...
+      # * A second, independent check that the module has no dependencies. The
+      # * import scanner reads source files; this reads the resolved build graph,
+      # * so a dependency introduced through go.mod alone is still caught.
+      - |
+        # Everything the build actually pulls in, minus this module itself. A
+        # stdlib import path's first segment never contains a dot, so a dot is
+        # the test for "external" — but our own package path has one too, which
+        # is why it is excluded explicitly rather than by counting.
+        external=$(go list -deps ./publicv1 | grep '\.' | grep -v '^github.com/ciphera-net/pulse-api-go' || true)
+        if [ -n "$external" ]; then
+          echo "publicv1 pulled in non-stdlib packages:"; echo "$external"; exit 1
+        fi
+        echo "ok  zero non-stdlib dependencies"
