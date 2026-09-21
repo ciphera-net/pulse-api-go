@@ -1,4 +1,4 @@
-// Package publicv1 defines the wire types of the Pulse public read API
+// Package publicv1 defines the wire types of the Pulse Analytics public read API
 // (https://pulse-api.ciphera.net/api/public/v1).
 //
 // # Why this is its own module
