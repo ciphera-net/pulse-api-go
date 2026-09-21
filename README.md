@@ -1,6 +1,6 @@
 # pulse-api-go
 
-Go types for the [Pulse](https://ciphera.net/products/pulse) public read API (`/api/public/v1`).
+Go types for the [Pulse Analytics](https://ciphera.net/products/pulse) public read API (`/api/public/v1`).
 
 Wire types only — no client, no transport, no configuration. **Zero dependencies**, standard library
 only, enforced by a test. Both the Pulse server and the [Pulse CLI](https://github.com/ciphera-net/pulse-cli)
