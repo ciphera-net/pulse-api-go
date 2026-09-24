@@ -52,6 +52,7 @@ drift `period=` exists to prevent. `meta.range.timezone` is always a resolvable 
 | `SitesEnvelope` | `GET /sites` |
 | `StatsEnvelope` | `GET /sites/{id}/stats` |
 | `RealtimeEnvelope` | `GET /sites/{id}/realtime` |
+| `BreakdownEnvelope` | `GET /sites/{id}/breakdown` |
 | `Error` | any non-2xx |
 
 Every response is an `Envelope[T]` — `{data, meta}` — so suppression, quota and retry handling can
@@ -60,6 +61,11 @@ optional meta means every client writes a nil check before reading `Suppressed`,
 forgets reads withheld data as complete.
 
 `Error.Error.Type` is the coarse class to branch on; `Code` is the specific, documented reason.
+
+**Breakdowns are the one endpoint without a privacy floor.** `GET /sites/{id}/breakdown` returns
+every row with its real counts, so `BreakdownRow.Visitors` and `Pageviews` are plain `int`s, never
+null, and `meta.suppressed` is always `false` there. `publicv1.BreakdownDimensions()` lists the
+accepted `dimension` values; it only ever grows.
 
 ## Compatibility
 

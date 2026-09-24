@@ -146,10 +146,11 @@ func TestNoTenantOrUserIdentifiersInAnyPayload(t *testing.T) {
 	}
 
 	payloads := map[string]any{
-		"me":       MeEnvelope{Data: Me{}},
-		"sites":    SitesEnvelope{Data: []Site{{}}},
-		"stats":    StatsEnvelope{Data: Stats{}},
-		"realtime": RealtimeEnvelope{Data: Realtime{TopPaths: []PathVisitors{{}}}},
+		"me":        MeEnvelope{Data: Me{}},
+		"sites":     SitesEnvelope{Data: []Site{{}}},
+		"stats":     StatsEnvelope{Data: Stats{}},
+		"realtime":  RealtimeEnvelope{Data: Realtime{TopPaths: []PathVisitors{{}}}},
+		"breakdown": BreakdownEnvelope{Data: Breakdown{Rows: []BreakdownRow{{Country: new(string)}}}},
 	}
 
 	for name, payload := range payloads {
@@ -196,5 +197,79 @@ func keysOf(node any) []string {
 		return keys
 	default:
 		return nil
+	}
+}
+
+// * The accepted dimensions are part of the v1 contract. A dimension may be
+// * added (append it here and to BreakdownDimensions); none may be removed or
+// * renamed, because a customer's script passing it would start getting a 400.
+func TestBreakdownDimensionsAreAdditiveOnly(t *testing.T) {
+	want := []string{
+		"page", "entry_page", "exit_page", "referrer", "channel",
+		"country", "region", "browser", "os", "device", "language",
+		"utm_source", "utm_medium", "utm_campaign",
+	}
+	got := BreakdownDimensions()
+	if len(got) < len(want) {
+		t.Fatalf("BreakdownDimensions() lost entries: got %v, want at least %v", got, want)
+	}
+	for i, d := range want {
+		if got[i] != d {
+			t.Errorf("dimension %d is %q, want %q — dimensions are append-only", i, got[i], d)
+		}
+	}
+	// * The excluded ones stay excluded until a deliberate decision says
+	// * otherwise: they are filterable, not groupable.
+	for _, excluded := range []string{"city", "timezone", "screen_resolution", "utm_term", "utm_content"} {
+		for _, d := range got {
+			if d == excluded {
+				t.Errorf("%q must not be a breakdown dimension", excluded)
+			}
+		}
+	}
+}
+
+// * The server builds its allowlist from BreakdownDimensions, so a caller that
+// * appends to or overwrites the returned slice must not change what the next
+// * caller sees.
+func TestBreakdownDimensionsReturnsACopy(t *testing.T) {
+	first := BreakdownDimensions()
+	first[0] = "city"
+	_ = append(first, "timezone")
+	if BreakdownDimensions()[0] != DimensionPage {
+		t.Fatal("mutating the returned slice changed the package's list")
+	}
+}
+
+// * Breakdown counts are never withheld (the endpoint has no floor), so they
+// * are plain numbers — a real zero is 0 — and country appears only on the
+// * region rows that need it.
+func TestBreakdownRowShape(t *testing.T) {
+	be := "BE"
+	body, err := json.Marshal(BreakdownEnvelope{Data: Breakdown{
+		Dimension: DimensionRegion,
+		Rows: []BreakdownRow{
+			{Value: "Limburg", Country: &be, Visitors: 12, Pageviews: 30},
+			{Value: "Antwerp", Country: &be, Visitors: 0, Pageviews: 0},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	got := string(body)
+	for _, want := range []string{
+		`"dimension":"region"`,
+		`{"value":"Limburg","country":"BE","visitors":12,"pageviews":30}`,
+		`"visitors":0,"pageviews":0`,
+		`"meta":{`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("breakdown JSON missing %s; body was %s", want, got)
+		}
+	}
+
+	body, _ = json.Marshal(BreakdownRow{Value: "Firefox", Visitors: 3, Pageviews: 4})
+	if strings.Contains(string(body), "country") {
+		t.Errorf("a non-region row must not carry country, got %s", body)
 	}
 }
