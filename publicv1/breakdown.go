@@ -76,6 +76,12 @@ type BreakdownRow struct {
 	// started (or ended) on the page. For the utm dimensions it counts every
 	// event that carried the tag, as the dashboard's campaign table does.
 	Pageviews int `json:"pageviews"`
+
+	// Instrument says which instrument measured the row: InstrumentMeasured,
+	// InstrumentImported, or InstrumentMixed when the row adds both (see
+	// Imported). Never empty. meta.imported describes the response as a whole;
+	// this describes the one row.
+	Instrument string `json:"instrument"`
 }
 
 // BreakdownEnvelope is the response of GET /sites/{id}/breakdown.
