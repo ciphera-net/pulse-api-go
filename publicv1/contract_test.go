@@ -150,7 +150,7 @@ func TestNoTenantOrUserIdentifiersInAnyPayload(t *testing.T) {
 		"sites":     SitesEnvelope{Data: []Site{{}}},
 		"stats":     StatsEnvelope{Data: Stats{}},
 		"realtime":  RealtimeEnvelope{Data: Realtime{TopPaths: []PathVisitors{{}}}},
-		"breakdown": BreakdownEnvelope{Data: Breakdown{Rows: []BreakdownRow{{Country: new(string)}}}},
+		"breakdown": BreakdownEnvelope{Data: Breakdown{Rows: []BreakdownRow{{Country: new(string)}}}, Meta: Meta{Imported: importedFixture()}},
 	}
 
 	for name, payload := range payloads {
@@ -249,8 +249,8 @@ func TestBreakdownRowShape(t *testing.T) {
 	body, err := json.Marshal(BreakdownEnvelope{Data: Breakdown{
 		Dimension: DimensionRegion,
 		Rows: []BreakdownRow{
-			{Value: "Limburg", Country: &be, Visitors: 12, Pageviews: 30},
-			{Value: "Antwerp", Country: &be, Visitors: 0, Pageviews: 0},
+			{Value: "Limburg", Country: &be, Visitors: 12, Pageviews: 30, Instrument: InstrumentMeasured},
+			{Value: "Antwerp", Country: &be, Visitors: 0, Pageviews: 0, Instrument: InstrumentImported},
 		},
 	}})
 	if err != nil {
@@ -259,7 +259,7 @@ func TestBreakdownRowShape(t *testing.T) {
 	got := string(body)
 	for _, want := range []string{
 		`"dimension":"region"`,
-		`{"value":"Limburg","country":"BE","visitors":12,"pageviews":30}`,
+		`{"value":"Limburg","country":"BE","visitors":12,"pageviews":30,"instrument":"measured"}`,
 		`"visitors":0,"pageviews":0`,
 		`"meta":{`,
 	} {
@@ -271,5 +271,136 @@ func TestBreakdownRowShape(t *testing.T) {
 	body, _ = json.Marshal(BreakdownRow{Value: "Firefox", Visitors: 3, Pageviews: 4})
 	if strings.Contains(string(body), "country") {
 		t.Errorf("a non-region row must not carry country, got %s", body)
+	}
+}
+
+func importedFixture() Imported {
+	from, through, source := "2025-03-01", "2026-02-28", "tool"
+	return Imported{Included: true, From: &from, Through: &through, Source: &source}
+}
+
+// * meta.imported is on every response, like meta.suppressed, so a client reads
+// * it without a nil check. With nothing imported, every field but included is
+// * an explicit null — never "" — because an empty string is a value a client
+// * can print ("imported from  to ") and a null is not.
+func TestImportedIsAlwaysPresentAndNullWhenEmpty(t *testing.T) {
+	for name, payload := range map[string]any{
+		"me":       MeEnvelope{Data: Me{}},
+		"sites":    SitesEnvelope{Data: []Site{}},
+		"realtime": RealtimeEnvelope{Data: Realtime{}},
+		"stats":    StatsEnvelope{Data: Stats{}},
+	} {
+		body, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatalf("%s: marshal: %v", name, err)
+		}
+		want := `"imported":{"included":false,"from":null,"through":null,"source":null,"reason":null}`
+		if !strings.Contains(string(body), want) {
+			t.Errorf("%s: meta must carry %s, got %s", name, want, body)
+		}
+	}
+}
+
+// * The two populated shapes: included (reason null) and left out (reason set,
+// * with the days that were left out still named).
+func TestImportedPopulatedShapes(t *testing.T) {
+	included := importedFixture()
+	body, err := json.Marshal(StatsEnvelope{Meta: Meta{Imported: included}})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	want := `"imported":{"included":true,"from":"2025-03-01","through":"2026-02-28","source":"tool","reason":null}`
+	if !strings.Contains(string(body), want) {
+		t.Errorf("included provenance: want %s, got %s", want, body)
+	}
+
+	leftOut := importedFixture()
+	leftOut.Included = false
+	reason := ImportedReasonFiltered
+	leftOut.Reason = &reason
+	body, err = json.Marshal(StatsEnvelope{Meta: Meta{Imported: leftOut}})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	want = `"imported":{"included":false,"from":"2025-03-01","through":"2026-02-28","source":"tool","reason":"filtered"}`
+	if !strings.Contains(string(body), want) {
+		t.Errorf("left-out provenance: want %s, got %s", want, body)
+	}
+}
+
+// * The wire values of reason and instrument are part of the contract: a value
+// * may be added, never renamed or removed, because clients branch on them.
+func TestImportedReasonAndInstrumentValuesAreStable(t *testing.T) {
+	for got, want := range map[string]string{
+		ImportedReasonFiltered:           "filtered",
+		ImportedReasonGranularity:        "granularity",
+		ImportedReasonSurfaceUnsupported: "surface_unsupported",
+		ImportedReasonSurfaceExcluded:    "surface_excluded",
+		InstrumentMeasured:               "measured",
+		InstrumentImported:               "imported",
+		InstrumentMixed:                  "mixed",
+	} {
+		if got != want {
+			t.Errorf("wire value changed: %q, want %q", got, want)
+		}
+	}
+}
+
+// * v1 is additive-only: a client built against the previous shapes of Meta and
+// * BreakdownRow (no imported, no instrument) must decode today's bodies and
+// * read the same values from the fields it knows. These are frozen copies of
+// * the v0.2.0 types; json.Unmarshal ignores unknown keys, which is the whole
+// * compatibility argument, so this test pins it rather than assuming it.
+func TestAPreviousClientDecodesTheNewShapes(t *testing.T) {
+	type v020Range struct {
+		From     string `json:"from"`
+		To       string `json:"to"`
+		Timezone string `json:"timezone"`
+		Period   string `json:"period,omitempty"`
+	}
+	type v020Meta struct {
+		Range           *v020Range `json:"range,omitempty"`
+		Suppressed      bool       `json:"suppressed"`
+		MinCellSize     int        `json:"min_cell_size,omitempty"`
+		SuppressedRows  *int       `json:"suppressed_rows,omitempty"`
+		SuppressedTotal *int       `json:"suppressed_total,omitempty"`
+	}
+	type v020Row struct {
+		Value     string  `json:"value"`
+		Country   *string `json:"country,omitempty"`
+		Visitors  int     `json:"visitors"`
+		Pageviews int     `json:"pageviews"`
+	}
+	type v020Breakdown struct {
+		Data struct {
+			Dimension string    `json:"dimension"`
+			Rows      []v020Row `json:"rows"`
+		} `json:"data"`
+		Meta v020Meta `json:"meta"`
+	}
+
+	be := "BE"
+	body, err := json.Marshal(BreakdownEnvelope{
+		Data: Breakdown{Dimension: DimensionRegion, Rows: []BreakdownRow{
+			{Value: "Limburg", Country: &be, Visitors: 12, Pageviews: 30, Instrument: InstrumentMixed},
+		}},
+		Meta: Meta{Range: &Range{From: "2026-01-01", To: "2026-01-31", Timezone: "Europe/Brussels"}, Imported: importedFixture()},
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var old v020Breakdown
+	if err := json.Unmarshal(body, &old); err != nil {
+		t.Fatalf("a v0.2.0 client cannot decode the new body: %v (body %s)", err, body)
+	}
+	if old.Data.Dimension != DimensionRegion || len(old.Data.Rows) != 1 {
+		t.Fatalf("decoded wrong data: %+v", old.Data)
+	}
+	row := old.Data.Rows[0]
+	if row.Value != "Limburg" || row.Country == nil || *row.Country != "BE" || row.Visitors != 12 || row.Pageviews != 30 {
+		t.Errorf("a v0.2.0 client read different values: %+v", row)
+	}
+	if old.Meta.Range == nil || old.Meta.Range.From != "2026-01-01" || old.Meta.Suppressed {
+		t.Errorf("a v0.2.0 client read a different meta: %+v", old.Meta)
 	}
 }

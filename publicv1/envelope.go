@@ -55,6 +55,14 @@ type Meta struct {
 	// not be confused with "this endpoint does not report rows".
 	SuppressedRows  *int `json:"suppressed_rows,omitempty"`
 	SuppressedTotal *int `json:"suppressed_total,omitempty"`
+
+	// Imported says whether the numbers include history the site imported from
+	// another analytics tool, and which days. A value, not a pointer, and on
+	// every response for the same reason as Suppressed: a client reads
+	// meta.imported.included without a nil check. Endpoints that never include
+	// imported history (/me, /sites, /realtime) carry the zero value, which says
+	// exactly that. See Imported.
+	Imported Imported `json:"imported"`
 }
 
 // Range is the resolved query window.
