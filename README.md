@@ -23,21 +23,23 @@ if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
 
 **Every metric is a pointer, and `nil` does not mean zero.**
 
-Pulse enforces a minimum cell size: a filtered result describing fewer than `publicv1.MinCellSize`
-visitors is withheld, and **a genuine zero is withheld too**. `visitors: null` with
-`meta.suppressed: true` means *"fewer than five, possibly none"* — you cannot tell which, by design.
-Rendering it as `0` publishes a number the API never reported.
+`nil` means the metric was not measured, which is a different fact from a measured zero. Rendering
+it as `0` publishes a number the API never reported. No value is withheld for being small, whether
+the query is filtered or not. `meta.suppressed` is always `false`, and `publicv1.MinCellSize` stays
+only so that code importing it still compiles.
 
 ```go
-if env.Meta.Suppressed {
-    fmt.Printf("withheld (fewer than %d visitors)\n", env.Meta.MinCellSize)
+if d := env.Data.AvgDuration; d == nil {
+    fmt.Println("average visit: not measured")
 } else {
-    fmt.Printf("%d visitors\n", *env.Data.Visitors)
+    fmt.Printf("average visit: %.0f s\n", *d)
 }
 ```
 
-The floor engages on **any** filter, not only on several — one high-cardinality filter singles out
-perfectly well. A key may combine at most `publicv1.MaxFilterDimensions` dimensions.
+Visitors over a range add up each day’s unique visitors, so a returning reader counts once for each
+day.
+
+A key may combine at most `publicv1.MaxFilterDimensions` filter dimensions in one query.
 
 **`meta.range` is the range the server actually queried.** Relative periods (`7d`, `30d`, `month`,
 `year`) resolve server-side in the site's timezone, and the resolved span comes back in
@@ -55,17 +57,15 @@ drift `period=` exists to prevent. `meta.range.timezone` is always a resolvable 
 | `BreakdownEnvelope` | `GET /sites/{id}/breakdown` |
 | `Error` | any non-2xx |
 
-Every response is an `Envelope[T]` — `{data, meta}` — so suppression, quota and retry handling can
-live in one place regardless of which endpoint was called. `Meta` is a value and not a pointer: an
-optional meta means every client writes a nil check before reading `Suppressed`, and the one that
-forgets reads withheld data as complete.
+Every response is an `Envelope[T]` (`{data, meta}`), so quota and retry handling can live in one
+place regardless of which endpoint was called. `Meta` is a value and not a pointer, so a client reads
+`meta.range` and `meta.imported` without a nil check.
 
 `Error.Error.Type` is the coarse class to branch on; `Code` is the specific, documented reason.
 
-**Breakdowns are the one endpoint without a privacy floor.** `GET /sites/{id}/breakdown` returns
-every row with its real counts, so `BreakdownRow.Visitors` and `Pageviews` are plain `int`s, never
-null, and `meta.suppressed` is always `false` there. `publicv1.BreakdownDimensions()` lists the
-accepted `dimension` values; it only ever grows.
+`GET /sites/{id}/breakdown` returns every row with its real counts, so `BreakdownRow.Visitors` and
+`Pageviews` are plain `int`s, never null. `publicv1.BreakdownDimensions()` lists the accepted
+`dimension` values; it only ever grows.
 
 ## Compatibility
 

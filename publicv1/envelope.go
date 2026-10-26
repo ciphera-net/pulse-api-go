@@ -34,25 +34,17 @@ type Meta struct {
 	// interpretation matched ours has no way to notice when it did not.
 	Range *Range `json:"range,omitempty"`
 
-	// Suppressed reports whether the privacy floor withheld any part of this
-	// response. Always present on endpoints where the floor can apply, so a
-	// client can distinguish "no data" from "data withheld" without inferring
-	// it from nulls.
+	// Suppressed is always false. No surface withholds a value for being small.
+	// The key stays because v1 is additive-only; it once reported that a
+	// visitor floor had withheld part of the response.
 	Suppressed bool `json:"suppressed"`
 
-	// MinCellSize is the floor that was applied, present only when it was.
-	// Returned so a client can explain the gap to a human without hardcoding
-	// our threshold.
+	// MinCellSize is omitted: no floor is applied. The key stays because v1 is
+	// additive-only.
 	MinCellSize int `json:"min_cell_size,omitempty"`
 
-	// SuppressedRows and SuppressedTotal describe what was withheld from a
-	// row-shaped result: how many rows fell below the floor and their combined
-	// value. The combined value is safe to return precisely because it is
-	// aggregated — that is what the floor is for — and without it the visible
-	// rows do not sum to the total, which users report as a bug.
-	//
-	// Pointers because zero is a real answer ("nothing was withheld") and must
-	// not be confused with "this endpoint does not report rows".
+	// SuppressedRows and SuppressedTotal are not set by the server. The keys
+	// stay because v1 is additive-only.
 	SuppressedRows  *int `json:"suppressed_rows,omitempty"`
 	SuppressedTotal *int `json:"suppressed_total,omitempty"`
 
@@ -110,16 +102,9 @@ const (
 	ErrorTypeServerError    = "server_error"
 )
 
-// MinCellSize is the minimum number of visitors a cell must represent before
-// it is reported.
-//
-// Below this, a single filtered figure identifies a person rather than
-// describing a population: filtering city, browser and screen resolution down
-// to {"visitors": 1} is singling out under GDPR Recital 26, and the
-// re-identification test there applies to any party — so "the customer could
-// have correlated that themselves" is the admission, not the defence.
-//
-// Exported so the CLI can explain a suppressed result without hardcoding it.
+// MinCellSize was the smallest number of visitors a cell had to represent
+// before it was reported. No surface applies it now. It stays exported so code
+// that imports it still compiles; do not use it in new logic.
 const MinCellSize = 5
 
 // MaxFilterDimensions is how many distinct dimensions an API key may combine

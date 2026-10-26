@@ -26,12 +26,12 @@
 //     mapped by hand from an internal struct, which is what lets the server's
 //     internal shape be refactored without a customer noticing.
 //
-//  2. Suppressible numbers are pointers, and their json tags deliberately carry
-//     no omitempty. A metric withheld by the privacy floor must serialize as an
-//     explicit null. With omitempty it would vanish from the object, and a
-//     client cannot tell an absent key from a key it forgot to read — so a
-//     withheld figure silently becomes 0, which is a wrong number rather than a
-//     missing one.
+//  2. Numbers that can be unmeasured are pointers, and their json tags deliberately carry
+//     no omitempty. A metric that was not measured must serialize as an explicit null. With
+//     omitempty it would vanish from the object, and a client cannot tell an absent key from
+//     a key it forgot to read, so a missing figure silently becomes 0, which is a wrong
+//     number rather than a missing one. (A metric could once also be withheld
+//     below a visitor floor; none is now.)
 //
 //  3. This package imports nothing but the standard library, and
 //     TestNoNonStdlibImports enforces it. Do not add a dependency to make a
