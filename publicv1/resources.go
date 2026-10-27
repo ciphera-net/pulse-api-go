@@ -75,11 +75,14 @@ type Site struct {
 
 // Stats is an aggregate over a date range.
 //
-// Every metric is a pointer with no omitempty, so a value withheld by the
-// privacy floor serializes as null rather than as zero or as an absent key.
-// Zero and withheld are different facts and a warehouse that treats them alike
-// reconciles to a wrong number without ever erroring.
+// Every metric is a pointer with no omitempty, so a metric that was not
+// measured serializes as null rather than as zero or as an absent key. Zero and
+// not measured are different facts and a warehouse that treats them alike
+// reconciles to a wrong number without ever erroring. No value is withheld for
+// being small.
 type Stats struct {
+	// Visitors counts unique visitors. Visitors over a range add up each day’s
+	// unique visitors, so a returning reader counts once for each day.
 	Visitors   *int     `json:"visitors"`
 	Pageviews  *int     `json:"pageviews"`
 	BounceRate *float64 `json:"bounce_rate"`
@@ -99,11 +102,8 @@ type Realtime struct {
 	// an entire site is a population, not a person, however small it is.
 	Visitors int `json:"visitors"`
 
-	// TopPaths breaks that count down by page, and is subject to the floor.
-	// A row reading {"path": "/checkout/confirm", "visitors": 1} is a live
-	// observation of one identifiable person's current page — the very thing
-	// aggregates-only exists to prevent. Rows below the floor are reported in
-	// Meta.SuppressedRows / Meta.SuppressedTotal rather than dropped silently.
+	// TopPaths breaks that count down by page. No row is withheld for being
+	// small.
 	//
 	// Always a slice, never null, so a client can range over it unguarded.
 	TopPaths []PathVisitors `json:"top_paths"`

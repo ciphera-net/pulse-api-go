@@ -67,8 +67,9 @@ type BreakdownRow struct {
 	// ambiguous: "Limburg" is a province of both Belgium and the Netherlands.
 	Country *string `json:"country,omitempty"`
 
-	// Visitors counts distinct visitors, the unit every other number on this
-	// API is expressed in.
+	// Visitors counts unique visitors, the unit every other number on this API
+	// is expressed in. Visitors over a range add up each day’s unique visitors,
+	// so a returning reader counts once for each day.
 	Visitors int `json:"visitors"`
 
 	// Pageviews counts the pageviews behind the row. For entry_page and
