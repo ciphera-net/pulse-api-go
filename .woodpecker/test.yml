@@ -9,7 +9,7 @@ when:
 
 steps:
   contract:
-    image: golang:1.25
+    image: golang:1.26
     backend_options:
       kubernetes:
         resources:
