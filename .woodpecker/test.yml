@@ -9,7 +9,7 @@ when:
 
 steps:
   contract:
-    image: golang:1.26
+    image: registry.ops.ciphera.net/mirror/docker.io/library/golang:1.26.10@sha256:4ddd76d158c062213aaf055513809cdac05a445b2db3a0f12dbb624ed2e577d9
     backend_options:
       kubernetes:
         resources:
